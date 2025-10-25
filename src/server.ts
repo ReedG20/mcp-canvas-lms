@@ -123,8 +123,9 @@ export class SSEMCPServer {
       const sessionId = Math.random().toString(36).substring(7);
 
       try {
-        // Create SSE transport
-        const transport = new SSEServerTransport('/messages', res);
+        // Create SSE transport with the full messages endpoint URL
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const transport = new SSEServerTransport(`${baseUrl}/messages`, res);
         
         // Import the MCP server setup from index
         const { createMCPServer } = await import('./index.js');
@@ -132,7 +133,7 @@ export class SSEMCPServer {
 
         // Store connection
         this.connections.set(sessionId, { sessionId, transport, server });
-        console.error(`[SSE Server] Connection established: ${sessionId}`);
+        console.error(`[SSE Server] Connection established: ${sessionId} (${baseUrl}/messages)`);
 
         // Connect server to transport
         await server.connect(transport);
@@ -156,13 +157,14 @@ export class SSEMCPServer {
     });
 
     // Messages endpoint - POST endpoint for incoming messages
-    this.app.post('/messages', this.authenticateRequest.bind(this), async (req: Request, res: Response) => {
-      console.error('[SSE Server] Received message:', JSON.stringify(req.body));
+    // This is called by the SSE transport to handle incoming MCP messages
+    this.app.post('/messages', express.text({ type: '*/*' }), this.authenticateRequest.bind(this), async (req: Request, res: Response) => {
+      console.error('[SSE Server] Received message:', typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
 
       try {
-        // The SSE transport handles message routing internally
-        // This endpoint is used by the SSE transport to receive messages
-        res.status(200).json({ success: true });
+        // The message has already been processed by the SSE transport
+        // We just need to acknowledge receipt
+        res.status(202).send('Accepted');
       } catch (error) {
         console.error('[SSE Server] Error handling message:', error);
         res.status(500).json({
