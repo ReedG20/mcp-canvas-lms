@@ -1,8 +1,16 @@
-# Canvas MCP Server v2.2.0
+# Canvas MCP Server v2.3.0
 
 > A comprehensive Model Context Protocol (MCP) server for Canvas LMS with complete student, instructor, and account administration functionality
 
-## 🚀 What's New in v2.2.0
+## 🚀 What's New in v2.3.0
+
+- **🌐 SSE Transport Support**: Deploy to cloud platforms like Render for remote access
+- **📱 Poke.com Integration**: Connect Canvas to AI assistants via text messages
+- **🔐 API Key Authentication**: Optional security for production deployments
+- **💚 Health Monitoring**: Built-in health check endpoint for uptime monitoring
+- **📊 Real-time Connections**: Multiple concurrent SSE connections support
+
+## Previous Updates (v2.2.0)
 
 - **🔧 FIXED**: Course creation "page not found" error (missing `account_id` parameter)
 - **👨‍💼 Account Management**: Complete account-level administration tools
@@ -43,7 +51,28 @@
 
 ## Quick Start
 
-### Option 1: Claude Desktop Integration (Recommended MCP Setup)
+### Option 1: Poke.com AI Assistant (SSE Transport)
+
+Deploy to Render and connect via Poke.com:
+
+1. **Deploy to Render:**
+   ```bash
+   # Connect your GitHub repo to Render
+   # Or use the Render Dashboard to deploy
+   ```
+
+2. **Configure in Poke.com:**
+   - Open Poke.com integrations
+   - Select "New Integration"
+   - Enter your server URL: `https://your-app.onrender.com/sse`
+   - Add your API key (optional but recommended)
+
+3. **Start using Canvas via text:**
+   - "What assignments do I have due this week?"
+   - "Show me my current grades"
+   - "List my courses"
+
+### Option 2: Claude Desktop Integration (Recommended MCP Setup)
 
 Add to `claude_desktop_config.json`:
 
@@ -62,7 +91,9 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Option 2: NPM Package
+> **Note:** Claude Desktop integration uses stdio transport and runs locally. For cloud/text message access, use Option 1 (Poke.com/Render).
+
+### Option 3: NPM Package (Local CLI)
 
 ```bash
 # Install globally
@@ -76,7 +107,7 @@ export CANVAS_DOMAIN="your_school.instructure.com"
 canvas-mcp-server
 ```
 
-### Option 3: Docker
+### Option 4: Docker
 
 ```bash
 docker run -d \
@@ -155,6 +186,53 @@ docker run -d \
 ⚠️ **Account Admin Note**: For account-level operations, ensure your API token has administrative privileges.
 
 ## Production Deployment
+
+### Render (Cloud Hosting for Poke.com)
+
+**Quick Deploy:**
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+**Manual Setup:**
+
+1. **Create a Render Account:** Sign up at [render.com](https://render.com)
+
+2. **Create New Web Service:**
+   - Connect your GitHub repository
+   - Select "Web Service"
+   - Choose branch: `main`
+
+3. **Configure Service:**
+   ```
+   Name: canvas-mcp-server
+   Environment: Node
+   Build Command: npm install && npm run build
+   Start Command: node build/index.js
+   ```
+
+4. **Set Environment Variables:**
+   ```
+   CANVAS_API_TOKEN=your_canvas_token_here
+   CANVAS_DOMAIN=school.instructure.com
+   MCP_API_KEY=generate_random_key_here
+   NODE_ENV=production
+   ```
+
+5. **Deploy:** Click "Create Web Service"
+
+6. **Get Your SSE URL:** 
+   - Your service URL will be: `https://your-app.onrender.com`
+   - SSE endpoint: `https://your-app.onrender.com/sse`
+
+7. **Connect to Poke.com:**
+   - Open Poke.com integrations
+   - Add new MCP integration
+   - Server URL: `https://your-app.onrender.com/sse`
+   - API Key: (your MCP_API_KEY)
+
+**Health Monitoring:**
+- Health endpoint: `https://your-app.onrender.com/health`
+- Check Canvas connectivity and server status
 
 ### Docker Compose
 ```bash
@@ -325,6 +403,77 @@ npm run type-check
 
 [Claude uses `canvas_list_account_courses` with filters, then `canvas_create_account_report`]
 
+## 🔌 API Endpoints (SSE Transport)
+
+When deployed with SSE transport (Render/Poke.com), the following endpoints are available:
+
+### Health Check
+```
+GET /health
+```
+Returns server status and Canvas API connectivity.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "canvas": {
+    "status": "ok",
+    "timestamp": "2024-01-15T12:00:00Z",
+    "user": { "id": 12345, "name": "John Doe" }
+  },
+  "timestamp": "2024-01-15T12:00:00Z",
+  "connections": 2
+}
+```
+
+### SSE Connection
+```
+GET /sse
+Authorization: Bearer <your-api-key>
+```
+Establishes Server-Sent Events connection for MCP protocol.
+
+**Headers:**
+- `Authorization: Bearer <MCP_API_KEY>` (optional, required if MCP_API_KEY is set)
+
+### Messages Endpoint
+```
+POST /messages
+Authorization: Bearer <your-api-key>
+Content-Type: application/json
+```
+Receives messages from MCP clients (used internally by SSE transport).
+
+## 🔐 Environment Variables
+
+### Required Variables
+- `CANVAS_API_TOKEN` - Your Canvas LMS API token
+- `CANVAS_DOMAIN` - Canvas domain (e.g., `school.instructure.com`)
+
+### Optional Variables
+- `PORT` - Server port (default: `3000`, auto-set by Render)
+- `MCP_API_KEY` - API key for securing MCP endpoints (recommended for production)
+- `NODE_ENV` - Environment mode (`development` or `production`)
+- `LOG_LEVEL` - Logging level (`debug`, `info`, `warn`, `error`)
+- `CANVAS_MAX_RETRIES` - API retry attempts (default: `3`)
+- `CANVAS_RETRY_DELAY` - Retry delay in ms (default: `1000`)
+- `CANVAS_TIMEOUT` - Request timeout in ms (default: `30000`)
+
+### Generating API Keys
+
+For `MCP_API_KEY`, generate a secure random key:
+
+```bash
+# Node.js
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# OpenSSL
+openssl rand -hex 32
+
+# Or use any secure password generator
+```
+
 ## 🔍 Troubleshooting
 
 **Common Issues:**
@@ -332,6 +481,14 @@ npm run type-check
 - ❌ **404 Not Found**: Verify course/assignment IDs and access rights  
 - ❌ **"Page not found" on course creation**: Update to v2.2.0 for account_id fix
 - ❌ **Timeout**: Increase `CANVAS_TIMEOUT` or check network connectivity
+- ❌ **SSE Connection Failed**: Verify MCP_API_KEY matches in Poke.com and server
+- ❌ **Render Health Check Failing**: Check `/health` endpoint and Canvas API credentials
+
+**SSE/Render Specific:**
+- Ensure `PORT` environment variable is not hardcoded (Render assigns dynamically)
+- Check Render logs for connection errors: `https://dashboard.render.com/`
+- Verify CORS headers allow Poke.com origin
+- Test SSE endpoint directly: `curl https://your-app.onrender.com/sse`
 
 **Debug Mode:**
 ```bash
@@ -376,7 +533,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
-  <strong>Canvas MCP Server v2.2.0</strong><br>
+  <strong>Canvas MCP Server v2.3.0</strong><br>
   <em>Empowering students, educators, and administrators with seamless Canvas integration</em><br><br>
   
   ⭐ **Star this repo if it helps you!** ⭐

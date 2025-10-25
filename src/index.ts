@@ -3,7 +3,6 @@
 // src/index.ts
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
@@ -1464,11 +1463,30 @@ class CanvasMCPServer {
     });
   }
 
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error(`${this.config.name} running on stdio`);
+  getServer(): Server {
+    return this.server;
   }
+}
+
+// Export function to create MCP server (used by SSE server)
+export function createMCPServer(token: string, domain: string): Server {
+  const config: MCPServerConfig = {
+    name: "canvas-mcp-server",
+    version: "2.3.0",
+    canvas: {
+      token,
+      domain,
+      maxRetries: parseInt(process.env.CANVAS_MAX_RETRIES || '3'),
+      retryDelay: parseInt(process.env.CANVAS_RETRY_DELAY || '1000'),
+      timeout: parseInt(process.env.CANVAS_TIMEOUT || '30000')
+    },
+    logging: {
+      level: (process.env.LOG_LEVEL as any) || 'info'
+    }
+  };
+
+  const mcpServer = new CanvasMCPServer(config);
+  return mcpServer.getServer();
 }
 
 // Main entry point with enhanced configuration
@@ -1510,24 +1528,18 @@ async function main() {
     process.exit(1);
   }
 
-  const config: MCPServerConfig = {
-    name: "canvas-mcp-server",
-    version: "2.2.3",
-    canvas: {
-      token,
-      domain,
-      maxRetries: parseInt(process.env.CANVAS_MAX_RETRIES || '3'),
-      retryDelay: parseInt(process.env.CANVAS_RETRY_DELAY || '1000'),
-      timeout: parseInt(process.env.CANVAS_TIMEOUT || '30000')
-    },
-    logging: {
-      level: (process.env.LOG_LEVEL as any) || 'info'
-    }
-  };
+  // Get optional configuration
+  const port = parseInt(process.env.PORT || '3000');
+  const apiKey = process.env.MCP_API_KEY;
 
   try {
-    const server = new CanvasMCPServer(config);
-    await server.run();
+    // Import and start SSE server
+    const { SSEMCPServer } = await import('./server.js');
+    const sseServer = new SSEMCPServer(port, token, domain, apiKey);
+    await sseServer.start();
+    
+    console.error(`[Canvas MCP Server] SSE transport ready`);
+    console.error(`[Canvas MCP Server] Connect via: http://localhost:${port}/sse`);
   } catch (error) {
     console.error("Fatal error:", error);
     process.exit(1);
