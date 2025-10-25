@@ -158,19 +158,33 @@ export class SSEMCPServer {
 
     // Messages endpoint - POST endpoint for incoming messages
     // This is called by the SSE transport to handle incoming MCP messages
-    this.app.post('/messages', express.text({ type: '*/*' }), this.authenticateRequest.bind(this), async (req: Request, res: Response) => {
-      console.error('[SSE Server] Received message:', typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+    this.app.post('/messages', express.json(), this.authenticateRequest.bind(this), async (req: Request, res: Response) => {
+      console.error('[SSE Server] Received message:', JSON.stringify(req.body));
 
       try {
-        // The message has already been processed by the SSE transport
-        // We just need to acknowledge receipt
-        res.status(202).send('Accepted');
+        // Find the most recent connection and let its transport handle the message
+        // In a production environment, you'd want to use session IDs to route properly
+        const connections = Array.from(this.connections.values());
+        if (connections.length === 0) {
+          console.error('[SSE Server] No active connections to handle message');
+          res.status(503).json({ error: 'No active connections' });
+          return;
+        }
+
+        // Use the most recent connection
+        const connection = connections[connections.length - 1];
+        console.error(`[SSE Server] Routing message to connection: ${connection.sessionId}`);
+        
+        // Let the transport handle the message
+        await connection.transport.handlePostMessage(req as any, res as any, req.body);
       } catch (error) {
         console.error('[SSE Server] Error handling message:', error);
-        res.status(500).json({
-          error: 'Failed to process message',
-          details: error instanceof Error ? error.message : String(error)
-        });
+        if (!res.headersSent) {
+          res.status(500).json({
+            error: 'Failed to process message',
+            details: error instanceof Error ? error.message : String(error)
+          });
+        }
       }
     });
 
